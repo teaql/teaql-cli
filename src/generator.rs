@@ -213,7 +213,7 @@ fn zip_directory(directory: &Path, writer: &mut File) -> Result<()> {
                 continue;
             }
             allowed_files.push(file_name.clone());
-            
+
             let file_path = directory.join(&file_name);
             if let Ok(content) = fs::read_to_string(&file_path) {
                 for line in content.lines() {
@@ -243,7 +243,7 @@ fn zip_directory(directory: &Path, writer: &mut File) -> Result<()> {
         }
 
         let name_string = name.to_string_lossy().replace('\\', "/");
-        
+
         // Filter logic
         if main_xml.exists() {
             if entry.file_type().is_file() && !allowed_files.contains(&name_string) {
@@ -253,7 +253,11 @@ fn zip_directory(directory: &Path, writer: &mut File) -> Result<()> {
             // Fallback: only include model files
             if entry.file_type().is_file() {
                 let lower = name_string.to_lowercase();
-                if !lower.ends_with(".xml") && !lower.ends_with(".ksml") && !lower.ends_with(".yml") && !lower.ends_with(".yaml") {
+                if !lower.ends_with(".xml")
+                    && !lower.ends_with(".ksml")
+                    && !lower.ends_with(".yml")
+                    && !lower.ends_with(".yaml")
+                {
                     continue;
                 }
             }
@@ -299,7 +303,11 @@ mod tests {
         let temp = tempdir().unwrap();
         let input_dir = temp.path().join("model");
         fs::create_dir_all(input_dir.join("nested")).unwrap();
-        fs::write(input_dir.join("main.xml"), "<_include file=\"root.xml\" />\n<_include file=\"nested/child.xml\" />").unwrap();
+        fs::write(
+            input_dir.join("main.xml"),
+            "<_include file=\"root.xml\" />\n<_include file=\"nested/child.xml\" />",
+        )
+        .unwrap();
         fs::write(input_dir.join("root.xml"), "root").unwrap();
         fs::write(input_dir.join("nested").join("child.xml"), "child").unwrap();
 
@@ -326,7 +334,11 @@ mod tests {
         let input_dir = temp.path().join("model");
         fs::create_dir_all(input_dir.join("nested")).unwrap();
         fs::write(input_dir.join("main.xml"), "<_include file=\"root.xml\" />").unwrap();
-        fs::write(input_dir.join("root.xml"), "<_include file=\"nested/child.xml\" />\nroot").unwrap();
+        fs::write(
+            input_dir.join("root.xml"),
+            "<_include file=\"nested/child.xml\" />\nroot",
+        )
+        .unwrap();
         fs::write(input_dir.join("nested").join("child.xml"), "child").unwrap();
         fs::write(input_dir.join("garbage.xml"), "garbage").unwrap();
 
@@ -338,7 +350,7 @@ mod tests {
         assert!(archive.by_name("main.xml").is_ok());
         assert!(archive.by_name("root.xml").is_ok());
         assert!(archive.by_name("nested/child.xml").is_ok());
-        
+
         // garbage.xml should be filtered out
         assert!(archive.by_name("garbage.xml").is_err());
     }

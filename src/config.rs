@@ -63,7 +63,7 @@ impl EnvConfig {
 
 const DEFAULT_ENDPOINT_PREFIX: &str = "https://api.teaql.io/latest/";
 const DEFAULT_BUILD_DIR: &str = "build";
-const DEFAULT_TIMEOUT_SECONDS: u64 = 1200;
+const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeaqlConfig {
