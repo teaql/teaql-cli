@@ -1,17 +1,15 @@
 use std::{
     collections::BTreeMap,
-    io::Write,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
-use reqwest::blocking::{Client, multipart};
+use reqwest::blocking::Client;
 use serde_json::Value;
 
 use crate::config::ResolvedConfig;
 
-/// The built-in demo model XML bundled with the crate.
-pub const DEMO_MODEL_XML: &str = include_str!("../assets/demo-service.xml");
+const PING_METHOD: &str = "version";
 
 pub fn endpoint_url(endpoint_prefix: &str, method: &str) -> String {
     format!(
@@ -147,42 +145,20 @@ fn display_json_value(value: &Value) -> String {
 
 // ── ping ─────────────────────────────────────────────────────────────────────
 
-/// Run a full end-to-end smoke-test against the TeaQL service using the
-/// built-in demo model.  Prints detailed step-by-step diagnostics.
+/// Verify service connectivity without coupling health to model validation or
+/// code generation. Model compatibility belongs to the `evaluate` command.
 pub fn ping(config: &ResolvedConfig) -> Result<()> {
     let total_start = Instant::now();
-    let endpoint = endpoint_url(&config.endpoint_prefix, "generate");
+    let endpoint = endpoint_url(&config.endpoint_prefix, PING_METHOD);
 
     step(1, "Configuration");
     println!("    endpoint_prefix : {}", config.endpoint_prefix);
-    println!("    generate url    : {}", endpoint);
+    println!("    health url      : {}", endpoint);
     println!("    timeout         : {}s", config.timeout_seconds);
-    let api_key_masked = "********";
-    println!("    api_key         : {}", api_key_masked);
-    println!("    build_dir       : {}", config.build_dir.display());
+    println!("    api_key         : ********");
+    println!("    probe           : service metadata only (no model generation)");
 
-    // ── step 2: write demo model to a temp file ──────────────────────────────
-    step(2, "Writing built-in demo model to temp file");
-    let t = Instant::now();
-    let mut model_tmp = tempfile::Builder::new()
-        .prefix("teaql-ping-model-")
-        .suffix(".xml")
-        .tempfile()
-        .context("failed to create temp file for demo model")?;
-    model_tmp
-        .write_all(DEMO_MODEL_XML.as_bytes())
-        .context("failed to write demo model")?;
-    model_tmp.flush().context("failed to flush demo model")?;
-    let model_path = model_tmp.path().to_path_buf();
-    println!("    written to      : {}", model_path.display());
-    println!("    size            : {} bytes", DEMO_MODEL_XML.len());
-    println!(
-        "    elapsed         : {:.0}ms",
-        t.elapsed().as_secs_f64() * 1000.0
-    );
-
-    // ── step 4: build HTTP client ─────────────────────────────────────────────
-    step(4, "Building HTTP client");
+    step(2, "Building HTTP client");
     let t = Instant::now();
     let client = Client::builder()
         .timeout(Duration::from_secs(config.timeout_seconds))
@@ -194,22 +170,13 @@ pub fn ping(config: &ResolvedConfig) -> Result<()> {
         t.elapsed().as_secs_f64() * 1000.0
     );
 
-    // ── step 6: POST to service ───────────────────────────────────────────────
-    step(6, "Sending request to TeaQL service");
-    println!("    POST            : {}", endpoint);
-    println!("    scope           : rust-lib");
+    step(3, "Sending health request to TeaQL service");
+    println!("    GET             : {}", endpoint);
     let t = Instant::now();
 
-    let model_bytes = DEMO_MODEL_XML.as_bytes().to_vec();
-    let file_part = multipart::Part::bytes(model_bytes).file_name("demo-service.xml");
-    let form = multipart::Form::new()
-        .part("file", file_part)
-        .text("scope", "rust-lib");
-
     let response = client
-        .post(&endpoint)
+        .get(&endpoint)
         .header("Authorization", format!("Bearer {}", config.api_key))
-        .multipart(form)
         .send()
         .with_context(|| format!("network request failed: {}", endpoint));
 
@@ -236,8 +203,7 @@ pub fn ping(config: &ResolvedConfig) -> Result<()> {
     let status = response.status();
     println!("    HTTP status     : {}", status);
 
-    // ── step 7: read response ─────────────────────────────────────────────────
-    step(7, "Reading response body");
+    step(4, "Reading response body");
     let t = Instant::now();
     let body = response
         .bytes()
@@ -260,58 +226,19 @@ pub fn ping(config: &ResolvedConfig) -> Result<()> {
         anyhow::bail!("service returned HTTP {}:\n{}", status, text.trim());
     }
 
-    // ── step 8: inspect zip ───────────────────────────────────────────────────
-    step(8, "Inspecting generated zip archive");
-    let t = Instant::now();
-    let cursor = std::io::Cursor::new(&body);
-    let mut archive =
-        zip::ZipArchive::new(cursor).context("response is not a valid zip archive")?;
-
-    let mut file_list: Vec<String> = Vec::new();
-    let mut has_error = false;
-    let mut error_content = String::new();
-
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
-        if name == "error.txt" {
-            has_error = true;
-            use std::io::Read;
-            entry.read_to_string(&mut error_content)?;
-        } else {
-            file_list.push(format!("    {:>8} bytes  {}", entry.size(), name));
-        }
-    }
-
-    println!("    files in archive: {}", file_list.len());
-    for f in &file_list {
-        println!("{}", f);
-    }
-    println!(
-        "    elapsed         : {:.0}ms",
-        t.elapsed().as_secs_f64() * 1000.0
-    );
-
-    // ── step 9: final result ──────────────────────────────────────────────────
-    step(9, "Result");
+    step(5, "Result");
     let total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
 
-    if has_error {
-        println!();
-        println!("  ✗  PING FAILED — service returned error.txt");
-        println!();
-        for line in error_content.trim().lines() {
-            println!("     {}", line);
-        }
-        println!();
-        println!("     total elapsed: {:.0}ms", total_ms);
-        anyhow::bail!("service error: {}", error_content.trim());
+    let text = String::from_utf8_lossy(&body);
+    if let Ok(version) = serde_json::from_str::<Value>(&text)
+        && let Ok(table) = format_key_value_table(&version)
+    {
+        println!("{}", table);
     }
 
     println!();
     println!("  ✓  PING OK");
     println!("     endpoint      : {}", endpoint);
-    println!("     files         : {}", file_list.len());
     println!("     total elapsed : {:.0}ms", total_ms);
     println!();
 
@@ -353,6 +280,12 @@ mod tests {
             endpoint_url("https://api.teaql.io/latest", "/generate"),
             "https://api.teaql.io/latest/generate"
         );
+    }
+
+    #[test]
+    fn ping_uses_metadata_endpoint_instead_of_model_generation() {
+        assert_eq!(PING_METHOD, "version");
+        assert_ne!(PING_METHOD, "generate");
     }
 
     #[test]
