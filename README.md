@@ -2,31 +2,50 @@
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13620/badge)](https://www.bestpractices.dev/projects/13620)
 
-Rust CLI for TeaQL code generation workflows.
+Rust CLI for evaluating TeaQL semantic models, generating language-native
+libraries and workspaces, and discovering generated APIs through model-aware
+Assist.
 
 ## Commands
 
 ```bash
-cargo-teaql <target-service> <model-path>
+# Discover the targets currently offered by the service.
+cargo teaql services
 
-# Examples:
-cargo-teaql java-app-console ./model
-cargo-teaql rust-lib-core ./model
-cargo-teaql services
-cargo-teaql version
-cargo-teaql show-config
-cargo-teaql config
-cargo-teaql install-links
+# Evaluate before generation.
+cargo teaql evaluate --input models/
+
+# Generate a library or runnable workspace.
+cargo teaql rust-lib-core --input models/ --output build/
+cargo teaql java-app-console --input models/ --output build/
+
+# Discover the generated API progressively.
+cargo teaql rust-assist-query/school --input models/
+cargo teaql rust-assist-query/school.established_date --input models/
+
+# Local maintenance commands.
+cargo teaql show-config
+cargo teaql config
+cargo teaql ping
+cargo teaql check --tests
 ```
 
-The CLI supports dynamic command routing. If the target service is not a built-in command, the CLI will automatically forward the request to the backend. If an input path is provided, it acts as a code generation target (e.g. `java-app-console`). If no input path is provided, it acts as a general GET request (e.g. `services`).
+Generation and Assist targets are provided dynamically by the TeaQL service,
+so the fixed `Commands` list in `--help` is not their complete inventory. Run
+`cargo teaql services` to discover the current targets and `cargo teaql version`
+to inspect their versions.
 
-If no arguments are provided at all, it automatically defaults to `cargo-teaql services`.
+Use `--input` for the KSML model file or directory. A dynamic target with model
+input performs evaluation, generation, or Assist; a remote information target
+such as `services` or `version` performs a GET request.
+
+If no command is provided, the CLI defaults to `cargo teaql services`.
+`cargo-teaql` is an equivalent direct invocation.
 
 ### CLI flags
 
 ```bash
-cargo-teaql java-app-console <model-path> \
+cargo teaql java-app-console --input models/ \
   --endpoint-prefix https://api.teaql.io/latest/ \
   --api-key ******** \
   --output ./build \
@@ -43,7 +62,7 @@ However, if a directory is provided but it **does not contain a `main.xml`**, th
 If you create symlink aliases to the same binary, these names also work:
 
 ```bash
-cargo teaql-java-app-console <model-path>
+cargo teaql-java-app-console --input models/
 cargo teaql-services
 cargo teaql-version
 cargo teaql-show-config
@@ -62,8 +81,11 @@ You can also target a custom directory with `cargo-teaql install-links --dir /so
 
 TeaQL provides specialized assist commands designed to help AI coding agents (and developers) quickly generate safe, compliant boilerplate templates for various business scenarios. 
 
-The command format is:
-`cargo-teaql <lang>-assist-<action>/<entity> --input <model_file>`
+The entity-level command format is:
+`cargo teaql <lang>-assist-<action>/<entity> --input <model>`
+
+For field-specific help, append the KSML field name:
+`cargo teaql <lang>-assist-<action>/<entity>.<field> --input <model>`
 
 Currently supported `rust-assist-*` targets:
 - `rust-assist-query`: Generate a comprehensive query template with field selections and mandatory `.purpose()`/`.comment()` cascades.
@@ -77,8 +99,9 @@ Currently supported `rust-assist-*` targets:
 
 **Example Usage:**
 ```bash
-cargo-teaql rust-assist-query/book --input modeling/bookstore.xml
-cargo-teaql java-assist-create/customer --input modeling/bookstore.xml
+cargo teaql rust-assist-query/book --input modeling/bookstore.xml
+cargo teaql rust-assist-query/book.published_at --input modeling/bookstore.xml
+cargo teaql java-assist-create/customer --input modeling/bookstore.xml
 ```
 
 ## Configuration
